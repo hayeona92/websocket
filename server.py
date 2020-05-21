@@ -7,23 +7,33 @@ import time
 HOST = os.getenv('HOST', '0.0.0.0')
 PORT = 8080
 
+
 async def websocket_handler(request):
     print('connection starting')
-    start = time.time()
+
     ws = aiohttp.web.WebSocketResponse()
     await ws.prepare(request)
     print('connection ready')
+
+    timer_start = time.time()
+    start = timer_start
+
     async for msg in ws:
-        print(msg)
+
+        timer_end = time.time()
+        result = timer_end - timer_start
+        timer_start = timer_end
         if msg.type == aiohttp.WSMsgType.TEXT:
             print(msg.data)
             if msg.data == 'close':
+                res = time.time()-start
+                await ws.send_str('total spent {} question number {}'.format(str(res),msg.data))
                 await ws.close()
             else:
-                await ws.send_str(msg.data + '/answer')
-    temp = time.time()-start
-    print(temp)
-    return (time.time()-start)
+                await ws.send_str('problem spent {}'.format(str(result)))
+
+
+    return ws
 
 
 loop = asyncio.get_event_loop()
