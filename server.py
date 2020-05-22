@@ -1,42 +1,52 @@
 import asyncio
-import os
-
-import aiohttp.web
 import time
+from autobahn.asyncio.websocket import WebSocketServerProtocol, \
+    WebSocketServerFactory
+import json
 
-HOST = os.getenv('HOST', '0.0.0.0')
-PORT = 8080
 
+class MyServerProtocol(WebSocketServerProtocol):
+    working_on = False
+    options = ['a','b','c','d','e','f','g']
+    start = 0
+    end = 0
+    async def onConnect(self, request):
+        print("Client connecting: {0}".format(request.peer))
 
-async def websocket_handler(request):
-    print('connection starting')
+    async def onOpen(self):
+        print("WebSocket connection open.")
 
-    ws = aiohttp.web.WebSocketResponse()
-    await ws.prepare(request)
-    print('connection ready')
-
-    timer_start = time.time()
-    start = timer_start
-
-    async for msg in ws:
-
-        timer_end = time.time()
-        result = timer_end - timer_start
-        timer_start = timer_end
-        if msg.type == aiohttp.WSMsgType.TEXT:
-            print(msg.data)
-            if msg.data == 'close':
-                res = time.time()-start
-                await ws.send_str('total spent {} question number {}'.format(str(res),msg.data))
-                await ws.close()
+    async def onMessage(self, payload, isBinary):
+        if not isBinary:
+            received_data = json.loads(payload.decode('utf8'))
+            if not self.working_on:
+                if received_data['question'].isnumeric():
+                    self.working_on = True
+                    self.start = time.time()
+                    self.sendMessage(json.dumps(received_data).encode('utf8'))
+                else: pass
+            elif received_data['answer'] in self.options:
+                self.end = time.time()
+                print(self.end-self.start)
+                self.working_on =False
             else:
-                await ws.send_str('problem spent {}'.format(str(result)))
+                pass
+    async def onClose(self, wasClean, code, reason):
+        print("WebSocket connection closed: {0}".format(reason))
 
 
-    return ws
+if __name__ == '__main__':
+    factory = WebSocketServerFactory("ws://127.0.0.1:9000")
+    factory.protocol = MyServerProtocol
 
+    loop = asyncio.get_event_loop()
+    coro = loop.create_server(factory, '0.0.0.0', 9000)
+    server = loop.run_until_complete(coro)
 
-loop = asyncio.get_event_loop()
-app = aiohttp.web.Application(loop=loop)
-app.router.add_route('GET', '/ws', websocket_handler)
-aiohttp.web.run_app(app, host=HOST, port=PORT)
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.close()
+        loop.close()
